@@ -24,6 +24,7 @@ type Cliente = {
   direccion: string;
   agencia: string;
   creado_en: Date;
+  estado: string;
 };
 
 function Bloqueado({ id, label, valor }: { id: string; label: string; valor: string }) {
@@ -40,12 +41,12 @@ export default async function ClienteDetalle({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ registrado?: string; solicitud?: string }>; // HU05
+  searchParams: Promise<{ registrado?: string; solicitud?: string }>;
 }) {
   const user = await usuarioActual();
-  const esAgente = user?.rol === "agente"; // solo el agente edita contacto y crea solicitudes
+  const esAgente = user?.rol === "agente";
   const { id: idParam } = await params;
-  const { registrado, solicitud } = await searchParams; // HU05
+  const { registrado, solicitud } = await searchParams;
   const id = Number(idParam);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
@@ -72,6 +73,7 @@ export default async function ClienteDetalle({
   if (!c) notFound();
 
   const esPersona = c.tipo === "persona";
+  const puedeCrearSolicitud = esAgente && c.estado === "En Orden";
 
   return (
     <>
@@ -84,13 +86,44 @@ export default async function ClienteDetalle({
         {new Date(c.creado_en).toLocaleDateString("es-PE", { timeZone: "America/Lima" })}
       </p>
 
+      {/* Badge de estado */}
+      <div style={{ marginBottom: 16 }}>
+        <span
+          className="badge"
+          style={{
+            background:
+              c.estado === "En Orden"
+                ? "#d1fae5"
+                : c.estado === "Moroso"
+                ? "#ffedd5"
+                : "#fee2e2",
+            color:
+              c.estado === "En Orden"
+                ? "#065f46"
+                : c.estado === "Moroso"
+                ? "#9a3412"
+                : "#991b1b",
+            fontSize: 13,
+            padding: "4px 14px",
+          }}
+        >
+          {c.estado}
+        </span>
+      </div>
+
+      {/* Aviso si no puede pedir préstamos */}
+      {esAgente && c.estado !== "En Orden" && (
+        <div className="aviso err" role="alert">
+          Este cliente tiene estado <strong>{c.estado}</strong> y no puede solicitar préstamos.
+        </div>
+      )}
+
       {registrado === "1" && (
         <div className="aviso ok" role="status">
           Cliente registrado correctamente con el código <strong>{c.codigo}</strong>.
         </div>
       )}
 
-      {/* HU05: confirmación con el código generado */}
       {solicitud && (
         <div className="aviso ok" role="status">
           Solicitud creada correctamente con el código <strong>{solicitud}</strong>. Quedó en
@@ -130,7 +163,7 @@ export default async function ClienteDetalle({
       )}
 
       <div className="panel">
-                <h2 style={{ fontSize: 16, margin: "0 0 12px" }}>
+        <h2 style={{ fontSize: 16, margin: "0 0 12px" }}>
           {esAgente ? "Contacto (editable)" : "Contacto"}
         </h2>
         {esAgente ? (
@@ -143,9 +176,8 @@ export default async function ClienteDetalle({
         )}
       </div>
 
-            <div className="acciones">
-        {/* HU05: enlace activo a la pantalla de crear solicitud */}
-        {esAgente && (
+      <div className="acciones">
+        {puedeCrearSolicitud && (
           <Link className="btn" href={`/clientes/${c.id}/solicitud`}>
             Crear solicitud
           </Link>

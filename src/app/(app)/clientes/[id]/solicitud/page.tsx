@@ -17,6 +17,7 @@ type Cli = {
   documento: string;
   telefono: string;
   correo: string;
+  estado: string;
 };
 
 export default async function NuevaSolicitud({ params }: { params: Promise<{ id: string }> }) {
@@ -24,14 +25,14 @@ export default async function NuevaSolicitud({ params }: { params: Promise<{ id:
   const id = Number(idParam);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
-    const user = await usuarioActual();
-  if (!user || user.rol !== "agente") redirect("/clientes"); // solo el agente crea solicitudes
+  const user = await usuarioActual();
+  if (!user || user.rol !== "agente") redirect("/clientes");
 
   let c: Cli | undefined;
   let lim: LimiteCliente;
   try {
     const rows = await query<Cli>(
-      `SELECT id, codigo, tipo,
+      `SELECT id, codigo, tipo, estado,
               CASE WHEN tipo = 'persona' THEN apellidos || ' ' || nombres ELSE razon_social END AS nombre,
               COALESCE(dni, ruc) AS documento, telefono, correo
          FROM clientes WHERE id = $1`,
@@ -53,6 +54,7 @@ export default async function NuevaSolicitud({ params }: { params: Promise<{ id:
   if (!c) notFound();
 
   const sinAgencia = !user?.agenciaId;
+  const bloqueado = c.estado === "Moroso" || c.estado === "Extrajudicial";
 
   return (
     <>
@@ -63,36 +65,50 @@ export default async function NuevaSolicitud({ params }: { params: Promise<{ id:
         {c.nombre} · {c.tipo === "persona" ? "DNI" : "RUC"} {c.documento}
       </p>
 
-      <div className="panel">
-        <h2>Límite del cliente</h2>
-        <dl className="detalle">
-          <div>
-            <dt>Límite máximo</dt>
-            <dd>{soles(lim.limite)}</dd>
-          </div>
-          <div>
-            <dt>Reservado (pendientes y aprobadas)</dt>
-            <dd>{soles(lim.reservado)}</dd>
-          </div>
-          <div>
-            <dt>Disponible</dt>
-            <dd>
-              <strong>{soles(lim.disponible)}</strong>
-            </dd>
-          </div>
-        </dl>
-      </div>
+      {bloqueado && (
+        <div className="aviso err" role="alert">
+          <strong>No se pueden crear solicitudes para este cliente.</strong> Su estado actual es{" "}
+          <strong>{c.estado}</strong>. Solo los clientes en estado{" "}
+          <strong>En Orden</strong> pueden solicitar préstamos.
+        </div>
+      )}
 
-      {sinAgencia ? (
+      {!bloqueado && (
+        <div className="panel">
+          <h2>Límite del cliente</h2>
+          <dl className="detalle">
+            <div>
+              <dt>Límite máximo</dt>
+              <dd>{soles(lim.limite)}</dd>
+            </div>
+            <div>
+              <dt>Reservado (pendientes y aprobadas)</dt>
+              <dd>{soles(lim.reservado)}</dd>
+            </div>
+            <div>
+              <dt>Disponible</dt>
+              <dd>
+                <strong>{soles(lim.disponible)}</strong>
+              </dd>
+            </div>
+          </dl>
+        </div>
+      )}
+
+      {!bloqueado && sinAgencia && (
         <div className="aviso warn" role="alert">
           Su usuario no está asociado a una agencia. Ingrese con un usuario de agencia para crear solicitudes.
         </div>
-      ) : lim.disponible <= 0 ? (
+      )}
+
+      {!bloqueado && !sinAgencia && lim.disponible <= 0 && (
         <div className="aviso warn" role="alert">
           El cliente ya alcanzó su límite de {soles(lim.limite)}. No se pueden crear más solicitudes
           hasta que se libere capital.
         </div>
-      ) : (
+      )}
+
+      {!bloqueado && !sinAgencia && lim.disponible > 0 && (
         <SolicitudForm clienteId={c.id} disponible={lim.disponible} />
       )}
 

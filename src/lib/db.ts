@@ -21,8 +21,6 @@ function pool(): Pool {
 
 const SCHEMA = `
 CREATE EXTENSION IF NOT EXISTS unaccent;
--- Código de cliente = máximo existente + 1. Si se borran todos los clientes, vuelve a CLI-0001.
--- El candado serializa altas simultáneas para no repetir códigos.
 CREATE OR REPLACE FUNCTION siguiente_codigo_cliente() RETURNS text
 LANGUAGE plpgsql AS $$
 DECLARE n integer;
@@ -31,14 +29,6 @@ BEGIN
   SELECT COALESCE(MAX(substr(codigo, 5)::integer), 0) + 1 INTO n FROM clientes;
   RETURN 'CLI-' || lpad(n::text, 4, '0');
 END $$;
-
-ALTER TABLE clientes ALTER COLUMN codigo SET DEFAULT siguiente_codigo_cliente();
-ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pass_version INTEGER NOT NULL DEFAULT 1;
-
-CREATE TABLE IF NOT EXISTS agencias (
-  id      SERIAL PRIMARY KEY,
-  nombre  TEXT NOT NULL UNIQUE
-);
 
 CREATE TABLE IF NOT EXISTS agencias (
   id      SERIAL PRIMARY KEY,
@@ -111,7 +101,6 @@ CREATE INDEX IF NOT EXISTS idx_solicitudes_estado_agencia
   ADD COLUMN IF NOT EXISTS decidido_en    TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS motivo_rechazo TEXT;
   ALTER TABLE solicitudes
-  
   ADD COLUMN IF NOT EXISTS tasa_mensual NUMERIC(7,6);
 
   CREATE TABLE IF NOT EXISTS cuotas (
@@ -137,13 +126,70 @@ CREATE TABLE IF NOT EXISTS clientes_modificaciones (
   correo_nuevo      TEXT NOT NULL,
   modificado_en     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE clientes ALTER COLUMN codigo SET DEFAULT siguiente_codigo_cliente();
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pass_version INTEGER NOT NULL DEFAULT 1;
+
+DO $$
+BEGIN
+  BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_clientes_dni ON clientes (dni) WHERE dni IS NOT NULL;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE WARNING 'Hay DNI duplicados en clientes: no se pudo crear ux_clientes_dni. Depure los datos.';
+  END;
+  BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_clientes_ruc ON clientes (ruc) WHERE ruc IS NOT NULL;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE WARNING 'Hay RUC duplicados en clientes: no se pudo crear ux_clientes_ruc. Depure los datos.';
+  END;
+END $$;
+
+ALTER TABLE clientes
+  ADD COLUMN IF NOT EXISTS estado TEXT NOT NULL DEFAULT 'En Orden'
+  CHECK (estado IN ('En Orden','Moroso','Extrajudicial'));
+
+CREATE OR REPLACE FUNCTION recalcular_estado_cliente(p_cliente_id INTEGER)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+  hoy        DATE := (now() AT TIME ZONE 'America/Lima')::date;
+  tiene_ext  BOOLEAN;
+  tiene_mor  BOOLEAN;
+  nuevo_est  TEXT;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1
+      FROM cuotas cu
+      JOIN solicitudes s ON s.id = cu.solicitud_id
+     WHERE s.cliente_id    = p_cliente_id
+       AND cu.vencimiento  < hoy
+       AND cu.estado      <> 'Pagada'
+       AND s.decidido_en  IS NOT NULL
+       AND s.decidido_en  < (now() - INTERVAL '12 months')
+  ) INTO tiene_ext;
+
+  IF tiene_ext THEN
+    nuevo_est := 'Extrajudicial';
+  ELSE
+    SELECT EXISTS (
+      SELECT 1
+        FROM cuotas cu
+        JOIN solicitudes s ON s.id = cu.solicitud_id
+       WHERE s.cliente_id   = p_cliente_id
+         AND cu.vencimiento < hoy
+         AND cu.estado     <> 'Pagada'
+    ) INTO tiene_mor;
+
+    nuevo_est := CASE WHEN tiene_mor THEN 'Moroso' ELSE 'En Orden' END;
+  END IF;
+
+  UPDATE clientes SET estado = nuevo_est WHERE id = p_cliente_id;
+END $$;
 `;
 
 const AGENCIAS = ["Trujillo", "Chiclayo", "Piura", "Tumbes"];
 
-// Cada usuario tiene su propia contraseña inicial. Cada uno puede cambiarla en "Mi cuenta".
 const ABREV: Record<string, string> = { Trujillo: "Tru", Chiclayo: "Chi", Piura: "Piu", Tumbes: "Tum" };
-const PASS_VERSION = 2; // al subirla, los usuarios semilla sin contraseña propia reciben la nueva inicial
+const PASS_VERSION = 2;
 
 function usuariosSemilla() {
   const lista: { nombre: string; usuario: string; rol: string; agencia: string | null; pass: string }[] = [
@@ -169,7 +215,6 @@ async function sembrarUsuarios(p: Pool) {
         [u.nombre, u.usuario, await bcrypt.hash(u.pass, 10), u.rol, u.agencia, PASS_VERSION],
       );
     } else {
-      // Migra a la contraseña individual solo a quien aún no cambió la suya (pass_version < 2).
       const ex = await p.query("SELECT 1 FROM usuarios WHERE usuario = $1 AND pass_version < $2", [u.usuario, PASS_VERSION]);
       if (ex.rows.length > 0) {
         await p.query("UPDATE usuarios SET password_hash = $2, pass_version = $3 WHERE usuario = $1", [
@@ -189,10 +234,7 @@ async function seed(p: Pool) {
       [nombre],
     );
   }
-
   await sembrarUsuarios(p);
-
-  // Datos de demostración (solo si SEED_DEMO=true y no hay clientes aún).
   if (process.env.SEED_DEMO === "true") {
     const c = await p.query("SELECT 1 FROM clientes LIMIT 1");
     if (c.rows.length === 0) await seedDemo(p);
@@ -285,6 +327,7 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   const r = await pool().query<T>(text, params);
   return r.rows;
 }
+
 type Q = <R extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[],

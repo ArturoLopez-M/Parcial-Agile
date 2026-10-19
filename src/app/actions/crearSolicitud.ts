@@ -21,7 +21,8 @@ export type SolicitudResultado =
 type Salida =
   | { tipo: "ok"; codigo: string }
   | { tipo: "limite"; disponible: number }
-  | { tipo: "noexiste" };
+  | { tipo: "noexiste" }
+  | { tipo: "bloqueado"; estado: string };
 
 export async function crearSolicitud(
   clienteId: number,
@@ -29,9 +30,11 @@ export async function crearSolicitud(
 ): Promise<SolicitudResultado> {
   const user = await usuarioActual();
   if (!user) redirect("/login");
-    if (user.rol !== "agente" || !user.agenciaId) {
-    return { ok: false, mensaje: "Solo el agente puede crear solicitudes." };
-  
+  if (!user.agenciaId) {
+    return {
+      ok: false,
+      mensaje: "El dueño no está asociado a una agencia. Ingrese con un usuario de agencia para crear solicitudes.",
+    };
   }
   if (!Number.isInteger(clienteId) || clienteId <= 0) {
     return { ok: false, mensaje: "Cliente no válido." };
@@ -42,17 +45,19 @@ export async function crearSolicitud(
   if (Object.keys(errores).length > 0) return { ok: false, errores };
 
   const monto = parseMonto(datos.monto)!;
-  const plazo = Number(datos.plazo); 
+  const plazo = Number(datos.plazo);
 
   let salida: Salida;
   try {
     salida = await withTransaction<Salida>(async (q) => {
-      // Bloquea al cliente: serializa solicitudes simultáneas y evita pasarse del límite.
-      const c = await q<{ telefono: string; correo: string }>(
-        "SELECT telefono, correo FROM clientes WHERE id = $1 FOR UPDATE",
+      const c = await q<{ telefono: string; correo: string; estado: string }>(
+        "SELECT telefono, correo, estado FROM clientes WHERE id = $1 FOR UPDATE",
         [clienteId],
       );
       if (!c[0]) return { tipo: "noexiste" };
+      if (c[0].estado === "Moroso" || c[0].estado === "Extrajudicial") {
+        return { tipo: "bloqueado", estado: c[0].estado };
+      }
 
       const lim = await q<{ excede: boolean; disponible: string }>(
         `SELECT $2::numeric > ($3::numeric - COALESCE(SUM(monto), 0)) AS excede,
@@ -65,25 +70,25 @@ export async function crearSolicitud(
         return { tipo: "limite", disponible: Math.max(0, Number(lim[0].disponible)) };
       }
 
-const ins = await q<{ codigo: string }>(
-  `INSERT INTO solicitudes
-     (cliente_id, agencia_id, monto, plazo_meses, tasa_mensual, finalidad, observaciones,
-      telefono, correo, creado_por)
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-   RETURNING codigo`,
-  [
-    clienteId,
-    user.agenciaId,
-    monto,
-    plazo,
-    TASA_MENSUAL,
-    datos.finalidad,
-    datos.observaciones || null,
-    c[0].telefono,
-    c[0].correo,
-    user.id,
-  ],
-);
+      const ins = await q<{ codigo: string }>(
+        `INSERT INTO solicitudes
+           (cliente_id, agencia_id, monto, plazo_meses, tasa_mensual, finalidad, observaciones,
+            telefono, correo, creado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         RETURNING codigo`,
+        [
+          clienteId,
+          user.agenciaId,
+          monto,
+          plazo,
+          TASA_MENSUAL,
+          datos.finalidad,
+          datos.observaciones || null,
+          c[0].telefono,
+          c[0].correo,
+          user.id,
+        ],
+      );
       return { tipo: "ok", codigo: ins[0].codigo };
     });
   } catch (err) {
@@ -92,6 +97,11 @@ const ins = await q<{ codigo: string }>(
   }
 
   if (salida.tipo === "noexiste") return { ok: false, mensaje: "El cliente ya no existe." };
+  if (salida.tipo === "bloqueado")
+    return {
+      ok: false,
+      mensaje: `No se puede crear una solicitud: el cliente tiene estado "${salida.estado}". Solo los clientes en estado "En Orden" pueden solicitar préstamos.`,
+    };
   if (salida.tipo === "limite") {
     return {
       ok: false,

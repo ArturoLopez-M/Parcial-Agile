@@ -58,6 +58,7 @@ export default async function ClientesPage({
                 <th>Tipo</th>
                 <th>Teléfono</th>
                 <th>Agencia</th>
+                <th>Estado</th>
                 <th></th>
               </tr>
             </thead>
@@ -74,6 +75,27 @@ export default async function ClientesPage({
                   </td>
                   <td>{f.telefono}</td>
                   <td>{f.agencia}</td>
+                  <td>
+                    <span
+                      className="badge"
+                      style={{
+                        background:
+                          f.estado === "En Orden"
+                            ? "#d1fae5"
+                            : f.estado === "Moroso"
+                            ? "#ffedd5"
+                            : "#fee2e2",
+                        color:
+                          f.estado === "En Orden"
+                            ? "#065f46"
+                            : f.estado === "Moroso"
+                            ? "#9a3412"
+                            : "#991b1b",
+                      }}
+                    >
+                      {f.estado}
+                    </span>
+                  </td>
                   <td>
                     <Link href={`/clientes/${f.id}`}>Ver detalle</Link>
                   </td>

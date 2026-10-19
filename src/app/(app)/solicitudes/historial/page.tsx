@@ -91,7 +91,13 @@ export default async function HistorialPage({
         rechazadas, de la más reciente a la más antigua.
       </p>
 
-      <form action="/solicitudes/historial" method="get" className="panel" role="search">
+      <form
+        key={`${q}|${estado}|${desde}|${hasta}`}
+        action="/solicitudes/historial"
+        method="get"
+        className="panel"
+        role="search"
+        >
         <div className="grid">
           <div className="campo">
             <label htmlFor="q">Cliente (nombre o DNI)</label>

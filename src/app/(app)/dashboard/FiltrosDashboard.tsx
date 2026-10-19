@@ -33,7 +33,12 @@ export default function FiltrosDashboard({
   const hayFiltros = agencia !== "" || desde !== "" || hasta !== "";
 
   return (
-    <form className="panel" onChange={(e) => aplicar(e.currentTarget)} aria-busy={pending}>
+    <form
+  key={`${agencia}|${desde}|${hasta}`}
+  className="panel"
+  onChange={(e) => aplicar(e.currentTarget)}
+  aria-busy={pending}
+>
       <div className="grid">
         <div className="campo">
           <label htmlFor="agencia">Agencia</label>

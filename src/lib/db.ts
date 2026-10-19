@@ -126,6 +126,17 @@ CREATE INDEX IF NOT EXISTS idx_solicitudes_estado_agencia
                 CHECK (estado IN ('Programada','Próxima a vencer','Vencida pendiente de verificación')),
   UNIQUE (solicitud_id, numero)
 );
+
+CREATE TABLE IF NOT EXISTS clientes_modificaciones (
+  id                SERIAL PRIMARY KEY,
+  cliente_id        INTEGER NOT NULL REFERENCES clientes(id),
+  usuario_id        INTEGER NOT NULL REFERENCES usuarios(id),
+  telefono_anterior TEXT NOT NULL,
+  correo_anterior   TEXT NOT NULL,
+  telefono_nuevo    TEXT NOT NULL,
+  correo_nuevo      TEXT NOT NULL,
+  modificado_en     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 const AGENCIAS = ["Trujillo", "Chiclayo", "Piura", "Tumbes"];
@@ -295,3 +306,4 @@ export async function withTransaction<T>(fn: (q: Q) => Promise<T>): Promise<T> {
     client.release();
   }
 }
+

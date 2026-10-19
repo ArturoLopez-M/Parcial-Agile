@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { query } from "@/lib/db";
+import { query, withTransaction } from "@/lib/db";
 import { usuarioActual } from "@/lib/session";
 import {
   type ClienteInput,
@@ -118,23 +118,42 @@ export type ContactoState =
 
 export async function actualizarContacto(
   id: number,
-  _prev: ContactoState,
-  formData: FormData,
+  telefonoIn: string,
+  correoIn: string,
 ): Promise<ContactoState> {
   const user = await usuarioActual();
   if (!user) redirect("/login");
+  if (user.rol === "administrador") {
+    return { ok: false, mensaje: "El administrador no puede modificar clientes." };
+  }
 
-  const telefono = String(formData.get("telefono") ?? "").trim();
-  const correo = String(formData.get("correo") ?? "").trim().toLowerCase();
+  const telefono = telefonoIn.trim();
+  const correo = correoIn.trim().toLowerCase();
   const errores = validarContacto(telefono, correo);
   if (Object.keys(errores).length > 0) return { ok: false, errores, telefono, correo };
 
   try {
-    const rows = await query<{ id: number }>(
-      "UPDATE clientes SET telefono = $1, correo = $2 WHERE id = $3 RETURNING id",
-      [telefono, correo, id],
-    );
-    if (rows.length === 0) return { ok: false, mensaje: "El cliente ya no existe.", telefono, correo };
+    const resultado = await withTransaction(async (q) => {
+      const actual = await q<{ telefono: string; correo: string }>(
+        "SELECT telefono, correo FROM clientes WHERE id = $1 FOR UPDATE",
+        [id],
+      );
+      if (actual.length === 0) return "no-existe" as const;
+      if (actual[0].telefono === telefono && actual[0].correo === correo) return "sin-cambios" as const;
+
+      // Solo se actualiza la tabla clientes: las solicitudes existentes no se tocan.
+      await q("UPDATE clientes SET telefono = $1, correo = $2 WHERE id = $3", [telefono, correo, id]);
+      await q(
+        `INSERT INTO clientes_modificaciones
+           (cliente_id, usuario_id, telefono_anterior, correo_anterior, telefono_nuevo, correo_nuevo)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, user.id, actual[0].telefono, actual[0].correo, telefono, correo],
+      );
+      return "ok" as const;
+    });
+
+    if (resultado === "no-existe") return { ok: false, mensaje: "El cliente ya no existe.", telefono, correo };
+    if (resultado === "sin-cambios") return { ok: false, mensaje: "No hay cambios que guardar.", telefono, correo };
   } catch (err) {
     console.error("actualizarContacto:", err);
     return { ok: false, mensaje: "No se pudo guardar. Intente de nuevo.", telefono, correo };

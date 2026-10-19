@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
+import { usuarioActual } from "@/lib/session";
 import ReintentarBtn from "@/components/ReintentarBtn";
 import ContactoForm from "./ContactoForm";
 
@@ -41,6 +42,8 @@ export default async function ClienteDetalle({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ registrado?: string; solicitud?: string }>; // HU05
 }) {
+  const user = await usuarioActual();
+  const esAgente = user?.rol === "agente"; // solo el agente edita contacto y crea solicitudes
   const { id: idParam } = await params;
   const { registrado, solicitud } = await searchParams; // HU05
   const id = Number(idParam);
@@ -127,15 +130,26 @@ export default async function ClienteDetalle({
       )}
 
       <div className="panel">
-        <h2 style={{ fontSize: 16, margin: "0 0 12px" }}>Contacto (editable)</h2>
-        <ContactoForm id={c.id} telefono={c.telefono} correo={c.correo} />
+                <h2 style={{ fontSize: 16, margin: "0 0 12px" }}>
+          {esAgente ? "Contacto (editable)" : "Contacto"}
+        </h2>
+        {esAgente ? (
+          <ContactoForm id={c.id} telefono={c.telefono} correo={c.correo} />
+        ) : (
+          <div className="grid">
+            <Bloqueado id="tel" label="Teléfono" valor={c.telefono} />
+            <Bloqueado id="cor" label="Correo electrónico" valor={c.correo} />
+          </div>
+        )}
       </div>
 
-      <div className="acciones">
+            <div className="acciones">
         {/* HU05: enlace activo a la pantalla de crear solicitud */}
-        <Link className="btn" href={`/clientes/${c.id}/solicitud`}>
-          Crear solicitud
-        </Link>
+        {esAgente && (
+          <Link className="btn" href={`/clientes/${c.id}/solicitud`}>
+            Crear solicitud
+          </Link>
+        )}
         <Link className="btn sec" href="/clientes">
           Volver a la lista
         </Link>

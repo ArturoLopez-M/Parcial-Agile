@@ -29,11 +29,9 @@ export async function crearSolicitud(
 ): Promise<SolicitudResultado> {
   const user = await usuarioActual();
   if (!user) redirect("/login");
-  if (!user.agenciaId) {
-    return {
-      ok: false,
-      mensaje: "El dueño no está asociado a una agencia. Ingrese con un usuario de agencia para crear solicitudes.",
-    };
+    if (user.rol !== "agente" || !user.agenciaId) {
+    return { ok: false, mensaje: "Solo el agente puede crear solicitudes." };
+  
   }
   if (!Number.isInteger(clienteId) || clienteId <= 0) {
     return { ok: false, mensaje: "Cliente no válido." };

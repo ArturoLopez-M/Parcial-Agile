@@ -61,8 +61,8 @@ async function buscarDuplicado(i: ClienteInput): Promise<ClienteExistente | null
 export async function registrarCliente(entrada: ClienteInput): Promise<RegistroResultado> {
   const user = await usuarioActual();
   if (!user) redirect("/login");
-    if (user.rol === "administrador") {
-    return { ok: false, mensaje: "El administrador no puede registrar clientes." };
+    if (user.rol !== "agente") {
+    return { ok: false, mensaje: "Solo el agente puede registrar clientes." };
   }
 
   const datos = normalizarCliente(entrada);
@@ -123,8 +123,8 @@ export async function actualizarContacto(
 ): Promise<ContactoState> {
   const user = await usuarioActual();
   if (!user) redirect("/login");
-  if (user.rol === "administrador") {
-    return { ok: false, mensaje: "El administrador no puede modificar clientes." };
+  if (user.rol !== "agente") {
+    return { ok: false, mensaje: "Solo el agente puede modificar clientes." };
   }
 
   const telefono = telefonoIn.trim();

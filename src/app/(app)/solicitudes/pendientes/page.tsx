@@ -25,14 +25,13 @@ export default async function PendientesPage({
 }) {
   const user = await usuarioActual();
   if (!user) redirect("/login");
-  if (user.rol === "agente") redirect("/clientes");
+  if (user.rol !== "administrador") redirect("/"); // la cola de pendientes es del administrador
 
   const { decidida, resultado } = await searchParams; // HU07
 
   let filas: Fila[] | null;
   try {
-    // Administrador: solo su sucursal. Dueño: todas las agencias.
-    // Orden: de la más antigua a la más reciente.
+    
     filas = await query<Fila>(
       `SELECT s.id, s.codigo,
               CASE WHEN c.tipo = 'persona' THEN c.apellidos || ' ' || c.nombres
@@ -52,13 +51,12 @@ export default async function PendientesPage({
     filas = null;
   }
 
-  const verTodas = user.rol === "dueno";
 
   return (
     <>
       <h1>Solicitudes pendientes</h1>
-      <p className="sub">
-        {verTodas ? "Todas las agencias" : `Agencia ${user.agencia}`} · de la más antigua a la más reciente.
+            <p className="sub">
+        Agencia {user.agencia} · de la más antigua a la más reciente.
       </p>
 
       {/* HU07: confirmación tras aprobar o rechazar */}
@@ -90,7 +88,6 @@ export default async function PendientesPage({
                 <th>Monto</th>
                 <th>Plazo</th>
                 <th>Fecha de creación</th>
-                {verTodas && <th>Agencia</th>}
                 <th></th>
               </tr>
             </thead>
@@ -103,7 +100,6 @@ export default async function PendientesPage({
                   <td>{soles(f.monto)}</td>
                   <td>{f.plazo_meses} {f.plazo_meses === 1 ? "mes" : "meses"}</td>
                   <td>{fechaLima(f.creada_en)}</td>
-                  {verTodas && <td>{f.agencia}</td>}
                   <td>
                     <Link href={`/solicitudes/${f.id}`}>Revisar</Link>
                   </td>

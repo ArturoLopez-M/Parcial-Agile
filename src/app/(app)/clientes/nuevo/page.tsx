@@ -7,7 +7,7 @@ export const metadata = { title: "Registrar cliente — ALGARROBO" };
 export default async function NuevoClientePage() {
   const user = await usuarioActual();
   if (!user) redirect("/login");
-  if (user.rol === "administrador") redirect("/clientes"); // el administrador no registra clientes
+    if (user.rol !== "agente") redirect("/clientes"); // solo el agente registra clientes
   return (
     <>
       <h1>Registrar cliente</h1>

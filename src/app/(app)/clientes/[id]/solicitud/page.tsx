@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { limiteCliente, type LimiteCliente } from "@/lib/limite";
 import { soles } from "@/lib/formato";
@@ -24,7 +24,8 @@ export default async function NuevaSolicitud({ params }: { params: Promise<{ id:
   const id = Number(idParam);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
-  const user = await usuarioActual();
+    const user = await usuarioActual();
+  if (!user || user.rol !== "agente") redirect("/clientes"); // solo el agente crea solicitudes
 
   let c: Cli | undefined;
   let lim: LimiteCliente;

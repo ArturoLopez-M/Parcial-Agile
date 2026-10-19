@@ -7,6 +7,7 @@ import { ETIQUETA_ROL, usuarioActual } from "@/lib/session";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await usuarioActual();
   if (!user) redirect("/login");
+  
 
   return (
     <>
@@ -15,10 +16,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Marca size={38} />
         </Link>
         <nav>
-          <Link href="/clientes">Clientes</Link>
-          {user.rol !== "administrador" && <Link href="/clientes/nuevo">Registrar cliente</Link>}
-          {user.rol !== "agente" && <Link href="/solicitudes/pendientes">Solicitudes pendientes</Link>}
-          {user.rol !== "agente" && <Link href="/solicitudes/historial">Historial de solicitudes</Link>}
+        {user.rol === "dueno" && <Link href="/dashboard">Dashboard</Link>}
+        {user.rol !== "dueno" && <Link href="/clientes">Clientes</Link>}
+        {user.rol === "agente" && <Link href="/clientes/nuevo">Registrar cliente</Link>}
+        {user.rol === "administrador" && <Link href="/solicitudes/pendientes">Solicitudes pendientes</Link>}
+        {user.rol === "administrador" && <Link href="/solicitudes/historial">Historial de solicitudes</Link>}
         </nav>
         <div className="quien">
           <Link href="/cuenta" title="Mi cuenta y contraseña" style={{ display: "flex", alignItems: "center", gap: 12, color: "inherit", textDecoration: "none" }}>

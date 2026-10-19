@@ -18,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Link href="/clientes">Clientes</Link>
           {user.rol !== "administrador" && <Link href="/clientes/nuevo">Registrar cliente</Link>}
           {user.rol !== "agente" && <Link href="/solicitudes/pendientes">Solicitudes pendientes</Link>}
+          {user.rol !== "agente" && <Link href="/solicitudes/historial">Historial de solicitudes</Link>}
         </nav>
         <div className="quien">
           <Link href="/cuenta" title="Mi cuenta y contraseña" style={{ display: "flex", alignItems: "center", gap: 12, color: "inherit", textDecoration: "none" }}>

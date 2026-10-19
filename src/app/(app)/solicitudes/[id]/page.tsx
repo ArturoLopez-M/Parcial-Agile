@@ -48,12 +48,19 @@ function Dato({ t, v }: { t: string; v: string }) {
   );
 }
 
-export default async function SolicitudDetalle({ params }: { params: Promise<{ id: string }> }) {
+export default async function SolicitudDetalle({ params,
+  searchParams, 
+ }: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ desde?: string }>; // HU08
+}) {
   const user = await usuarioActual();
   if (!user) redirect("/login");
   if (user.rol === "agente") redirect("/clientes");
 
   const { id: idParam } = await params;
+  const { desde } = await searchParams; // HU08
+  const deHistorial = desde === "historial"; // HU08: consulta de solo lectura
   const id = Number(idParam);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
@@ -101,7 +108,7 @@ export default async function SolicitudDetalle({ params }: { params: Promise<{ i
   if (!s || (user.rol === "administrador" && s.agencia_id !== user.agenciaId)) notFound();
 
   const esPersona = s.tipo === "persona";
-  const puedeDecidir = s.estado === "Pendiente" && user.rol === "administrador"; // HU07
+  const puedeDecidir = s.estado === "Pendiente" && user.rol === "administrador" && !deHistorial; // HU07
 
   return (
     <>
@@ -180,8 +187,11 @@ export default async function SolicitudDetalle({ params }: { params: Promise<{ i
       {puedeDecidir && <DecisionSolicitud solicitudId={s.id} codigo={s.codigo} />}
 
       <div className="acciones">
-        <Link className="btn sec" href="/solicitudes/pendientes">
-          Volver a pendientes
+                <Link
+          className="btn sec"
+          href={deHistorial ? "/solicitudes/historial" : "/solicitudes/pendientes"}
+        >
+          {deHistorial ? "Volver al historial" : "Volver a pendientes"}
         </Link>
       </div>
     </>
